@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseDraftReply } from "../lib/draft-reply";
+import {
+  parseDraftReply,
+  parseVerifyReply,
+  verifyFlags,
+} from "../lib/draft-reply";
 
 const fullReply = JSON.stringify({
   idea: "The reader will learn that one owner beats a busy week.",
@@ -93,5 +97,84 @@ describe("draft reply shape", () => {
         }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("verify reply shape", () => {
+  const verifyReply = JSON.stringify({
+    checks: [
+      {
+        sentence: "We lost a client last month.",
+        supported: true,
+        evidence: "We lost a client last month.",
+      },
+      {
+        sentence: "Then we lost another one.",
+        supported: false,
+        evidence: "adds a second loss the input never stated",
+      },
+      {
+        sentence: "We were losing 1 in 4 clients in week one.",
+        supported: false,
+        evidence: "adds week one to a number the input never timed",
+      },
+    ],
+  });
+
+  it("keeps a valid shape with supported and unsupported sentences", () => {
+    const parsed = parseVerifyReply(verifyReply);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.checks).toHaveLength(3);
+    expect(parsed?.checks[0].supported).toBe(true);
+    expect(parsed?.checks[0].evidence).toBe(
+      "We lost a client last month.",
+    );
+    expect(verifyFlags(parsed)).toHaveLength(2);
+    expect(verifyFlags(parsed)[0].sentence).toBe(
+      "Then we lost another one.",
+    );
+    expect(verifyFlags(parsed)[0].evidence).toBe(
+      "adds a second loss the input never stated",
+    );
+    expect(verifyFlags(parsed)[1].sentence).toBe(
+      "We were losing 1 in 4 clients in week one.",
+    );
+  });
+
+  it("keeps an empty checks list, which means no flags", () => {
+    const parsed = parseVerifyReply(JSON.stringify({ checks: [] }));
+    expect(parsed).not.toBeNull();
+    expect(parsed?.checks).toEqual([]);
+    expect(verifyFlags(parsed)).toEqual([]);
+  });
+
+  it("yields no flags from malformed input, so the draft still stands", () => {
+    expect(parseVerifyReply("not json at all")).toBeNull();
+    expect(
+      parseVerifyReply(JSON.stringify({ checks: "all clear" })),
+    ).toBeNull();
+    expect(
+      parseVerifyReply(
+        JSON.stringify({
+          checks: [
+            { sentence: "We lost a client.", supported: true },
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseVerifyReply(
+        JSON.stringify({
+          checks: [
+            {
+              sentence: "We lost a client.",
+              supported: "yes",
+              evidence: "transcript",
+            },
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(verifyFlags(null)).toEqual([]);
   });
 });

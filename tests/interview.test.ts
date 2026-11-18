@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { passesCopyRules } from "../lib/copy-rules";
 import {
   DRAFT_SYSTEM_PROMPT,
+  VERIFY_SYSTEM_PROMPT,
   buildDraftUserMessage,
   buildInterviewUserMessage,
+  buildVerifyUserMessage,
 } from "../lib/prompts";
 
 // The interview caps live in the route, but the rules they enforce are
@@ -140,5 +142,65 @@ describe("draft prompt rules", () => {
 
   it("passes the house copy rules itself", () => {
     expect(passesCopyRules(DRAFT_SYSTEM_PROMPT)).toBe(true);
+  });
+});
+
+describe("verify prompt rules", () => {
+  it("checks sentences against the transcript and the answers only", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain("fact-checker");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("voice-note transcript");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("interview answers");
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "is every claim in the sentence supported",
+    );
+  });
+
+  it("never counts the fingerprint posts as evidence", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "They never count as evidence",
+    );
+  });
+
+  it("names what makes a sentence unsupported", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "combines two facts into a new claim",
+    );
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "adds a time, place, number, or name",
+    );
+    expect(VERIFY_SYSTEM_PROMPT).toContain("changes a number's meaning");
+    expect(VERIFY_SYSTEM_PROMPT).toContain("Names and numbers count");
+  });
+
+  it("answers with JSON only, one check per sentence", () => {
+    expect(VERIFY_SYSTEM_PROMPT).toContain(
+      "You answer with JSON only, no other text",
+    );
+    expect(VERIFY_SYSTEM_PROMPT).toContain('"checks"');
+    expect(VERIFY_SYSTEM_PROMPT).toContain('"supported"');
+    expect(VERIFY_SYSTEM_PROMPT).toContain('"evidence"');
+  });
+
+  it("sends the transcript, the answers, and the draft, and no fingerprint", () => {
+    const message = buildVerifyUserMessage({
+      transcript: "We lost a client last month.",
+      answers: [
+        {
+          question: "What changed?",
+          answer: "We gave the first week one owner.",
+        },
+      ],
+      draft: "We lost a client last month.\n\nOne owner fixed week one.",
+    });
+    expect(message).toContain("We lost a client last month.");
+    expect(message).toContain("Q: What changed?");
+    expect(message).toContain("A: We gave the first week one owner.");
+    expect(message).toContain("Draft to check:");
+    expect(message).toContain("One owner fixed week one.");
+    expect(message).not.toContain("fingerprint");
+  });
+
+  it("passes the house copy rules itself", () => {
+    expect(passesCopyRules(VERIFY_SYSTEM_PROMPT)).toBe(true);
   });
 });
