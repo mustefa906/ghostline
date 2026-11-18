@@ -5,8 +5,18 @@ import {
   isMissingKey,
 } from "@/lib/anthropic";
 import { checkCopyRules, repairDashes } from "@/lib/copy-rules";
-import { parseDraftReply, type DraftSource } from "@/lib/draft-reply";
-import { DRAFT_SYSTEM_PROMPT, buildDraftUserMessage } from "@/lib/prompts";
+import {
+  parseDraftReply,
+  parseVerifyReply,
+  verifyFlags,
+  type DraftSource,
+} from "@/lib/draft-reply";
+import {
+  DRAFT_SYSTEM_PROMPT,
+  VERIFY_SYSTEM_PROMPT,
+  buildDraftUserMessage,
+  buildVerifyUserMessage,
+} from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -127,6 +137,40 @@ export async function POST(req: NextRequest) {
       .filter((p) => p.trim().length > 0).length;
     const sourceNote = sourceNoteFrom(parsed.sources, paragraphs);
 
+    // A second pass fact-checks the draft against the transcript and the
+    // answers. It only flags lines. A flag never blocks the draft, and a
+    // failed check leaves the draft exactly as it is.
+    let flagged:
+      | { sentence: string; evidence: string }[]
+      | undefined;
+    try {
+      const verifyMessage = await anthropic.client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 800,
+        system: VERIFY_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: buildVerifyUserMessage({ transcript, answers, draft }),
+          },
+        ],
+      });
+      const verifyRaw = verifyMessage.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      const flags = verifyFlags(parseVerifyReply(verifyRaw));
+      if (flags.length > 0) {
+        flagged = flags.map((flag) => ({
+          sentence: repairDashes(flag.sentence),
+          evidence: repairDashes(flag.evidence),
+        }));
+      }
+    } catch {
+      // Verification is best effort. The draft stands without it.
+    }
+
     return NextResponse.json({
       draft,
       plain,
@@ -139,6 +183,7 @@ export async function POST(req: NextRequest) {
       scores,
       total: parsed.total,
       blanks,
+      flagged,
     });
   } catch {
     return NextResponse.json(
