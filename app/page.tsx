@@ -460,6 +460,19 @@ export default function Home() {
         </section>
       )}
 
+      <section className="mt-12">
+        <h2 className="text-lg font-semibold">Watch how it works</h2>
+        <div className="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+          <iframe
+            src="https://player.mediadelivery.net/embed/693077/4e2e2b68-bfd1-48ab-a420-609e8e3fbdd7?autoplay=false"
+            loading="lazy"
+            style={{ border: 0, width: "100%", aspectRatio: "16/9" }}
+            allowFullScreen
+            title="Ghostline explainer video"
+          />
+        </div>
+      </section>
+
       <footer className="mt-12 border-t border-stone-200 pt-4 text-xs text-stone-400">
         Ghostline. Interview first, never write from a prompt alone. Built for
         Kiroween 2026.
