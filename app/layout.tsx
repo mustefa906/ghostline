@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
+import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
+
+const display = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const sans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Ghostline - Talk it out. Post in your voice.",
@@ -14,7 +27,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-paper text-ink antialiased">{children}</body>
+      <body
+        className={`${display.variable} ${sans.variable} bg-paper font-sans text-ink antialiased`}
+      >
+        {children}
+      </body>
     </html>
   );
 }
