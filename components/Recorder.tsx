@@ -7,6 +7,7 @@ import {
   validateAudioDuration,
   validateAudioFile,
 } from "@/lib/validation";
+import Waveform from "@/components/Waveform";
 
 export type RecorderResult =
   | { kind: "audio"; blob: Blob; seconds: number }
@@ -189,13 +190,13 @@ export default function Recorder({
           <p className="mb-3 text-sm text-stone-600">
             Talk about one idea. Up to 3 minutes.
           </p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {!recording ? (
               <button
                 type="button"
                 onClick={startRecording}
                 disabled={busy}
-                className="rounded-full bg-brass px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="min-h-[52px] w-full rounded-full bg-brass px-7 py-3.5 text-base font-semibold text-white disabled:opacity-50 sm:w-auto"
               >
                 Start recording
               </button>
@@ -203,7 +204,7 @@ export default function Recorder({
               <button
                 type="button"
                 onClick={stopRecording}
-                className="rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white"
+                className="min-h-[52px] w-full rounded-full bg-red-700 px-7 py-3.5 text-base font-semibold text-white sm:w-auto"
               >
                 Stop
               </button>
@@ -219,6 +220,11 @@ export default function Recorder({
               </span>
             )}
           </div>
+          {recording && (
+            <div className="mt-4 rounded-lg bg-red-50 px-4 py-1">
+              <Waveform bars={36} barClassName="bg-red-600" />
+            </div>
+          )}
           {audioUrl && !recording && (
             <div className="mt-4">
               <p className="mb-2 text-sm text-stone-600">
