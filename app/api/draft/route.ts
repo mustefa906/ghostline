@@ -5,40 +5,11 @@ import {
   isMissingKey,
 } from "@/lib/anthropic";
 import { checkCopyRules, repairDashes } from "@/lib/copy-rules";
+import { parseDraftReply, type DraftSource } from "@/lib/draft-reply";
 import { DRAFT_SYSTEM_PROMPT, buildDraftUserMessage } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
-
-type DraftSource = { paragraph: number; source: string; detail: string };
-
-type DraftReply = {
-  draft: string;
-  plain: string;
-  short: string;
-  sources: DraftSource[];
-};
-
-function parseDraftReply(raw: string): DraftReply | null {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    const parsed = JSON.parse(raw.slice(start, end + 1)) as DraftReply;
-    if (
-      typeof parsed.draft === "string" &&
-      parsed.draft.trim().length > 0 &&
-      typeof parsed.plain === "string" &&
-      typeof parsed.short === "string" &&
-      Array.isArray(parsed.sources)
-    ) {
-      return parsed;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 function sourceNoteFrom(sources: DraftSource[], paragraphs: number): string {
   if (!sources.length) {
@@ -92,7 +63,7 @@ export async function POST(req: NextRequest) {
   try {
     const message = await anthropic.client.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2000,
+      max_tokens: 3000,
       system: DRAFT_SYSTEM_PROMPT,
       messages: [
         {
@@ -137,6 +108,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Same dash repair on the new engagement fields. A missing field stays
+    // missing; the response drops it instead of failing the draft.
+    const idea = parsed.idea ? repairDashes(parsed.idea) : undefined;
+    const hooks = parsed.hooks?.map((h) => ({
+      ...h,
+      text: repairDashes(h.text),
+    }));
+    const visual = parsed.visual ? repairDashes(parsed.visual) : undefined;
+    const scores = parsed.scores?.map((s) => ({
+      ...s,
+      label: repairDashes(s.label),
+    }));
+    const blanks = parsed.blanks?.map((b) => repairDashes(b));
+
     const paragraphs = draft
       .split(/\n\s*\n/)
       .filter((p) => p.trim().length > 0).length;
@@ -148,6 +133,12 @@ export async function POST(req: NextRequest) {
       short,
       sources: parsed.sources,
       sourceNote,
+      idea,
+      hooks,
+      visual,
+      scores,
+      total: parsed.total,
+      blanks,
     });
   } catch {
     return NextResponse.json(
