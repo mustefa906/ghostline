@@ -73,6 +73,7 @@ Hook rules:
 - About the reader or a real moment. Never the author's CV or credentials.
 - Human and honest beats polished. "I got promoted. First move: a Netflix binge." beats "Thrilled to announce".
 - Strong shapes: "[common path] got me 0. [other path] got me X.", "Myth: ___.", "In [year], I ___.", "I [did surprising thing]. Here's what happened.", "Stop ___."
+- Write every contrast without a comma followed by the word not. State a contrast with the "got me 0" shape or a plain positive restatement.
 Then write a rehook for line 2 that opens a curiosity loop: add tension, a stake, or a "but".
 
 STEP 3. WRITE THE BODY
@@ -94,6 +95,7 @@ FORMATTING
 - 120-250 words unless the format needs more.
 - Plain words, contractions, no corporate jargon (no "leverage", "game-changer", "thrilled", "excited to announce", "in today's fast-paced world").
 - No em dashes, no hashtags unless asked, max 1-2 emojis and only in lists.
+- Never write a comma and then the word not.
 - Links, if any, go in the body near the bottom.
 - Celebrate real people by name when the input includes them; they reshare.
 
