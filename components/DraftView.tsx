@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 
+export type DraftHook = { width: string; text: string; picked: boolean };
+export type DraftScore = { label: string; score: number };
+
 export type DraftData = {
   draft: string;
   plain: string;
   short: string;
   sources: { paragraph: number; source: string; detail: string }[];
   sourceNote: string;
+  idea?: string;
+  hooks?: DraftHook[];
+  visual?: string;
+  scores?: DraftScore[];
+  total?: number;
+  blanks?: string[];
 };
 
 type Props = {
@@ -177,6 +186,83 @@ export default function DraftView({
           {data.sourceNote}
         </p>
       </div>
+
+      {data.idea && (
+        <div className="mt-4 rounded-lg bg-stone-50 p-4">
+          <h3 className="text-sm font-semibold">One idea</h3>
+          <p className="mt-1 text-sm leading-relaxed text-stone-600">
+            {data.idea}
+          </p>
+        </div>
+      )}
+
+      {data.hooks && data.hooks.length > 0 && (
+        <div className="mt-4 rounded-lg bg-stone-50 p-4">
+          <h3 className="text-sm font-semibold">Hooks</h3>
+          <ul className="mt-2 space-y-2">
+            {data.hooks.map((hook, i) => (
+              <li key={i} className="text-sm leading-relaxed text-stone-600">
+                <span className="font-medium text-stone-800">
+                  {hook.width}:
+                </span>{" "}
+                {hook.text}
+                {hook.picked && (
+                  <span className="ml-2 rounded-full bg-brass px-2 py-0.5 text-xs font-semibold text-white">
+                    Used in this draft
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.scores && data.scores.length > 0 && (
+        <div className="mt-4 rounded-lg bg-stone-50 p-4">
+          <h3 className="text-sm font-semibold">Score card</h3>
+          <ul className="mt-2 space-y-1">
+            {data.scores.map((entry, i) => (
+              <li
+                key={i}
+                className="flex justify-between text-sm text-stone-600"
+              >
+                <span>{entry.label}</span>
+                <span className="font-medium text-stone-800">
+                  {entry.score} / 2
+                </span>
+              </li>
+            ))}
+          </ul>
+          {typeof data.total === "number" && (
+            <p className="mt-2 border-t border-stone-200 pt-2 text-sm font-semibold text-stone-800">
+              Total: {data.total} / 16
+            </p>
+          )}
+        </div>
+      )}
+
+      {data.visual && (
+        <div className="mt-4 rounded-lg bg-stone-50 p-4">
+          <h3 className="text-sm font-semibold">Visual suggestion</h3>
+          <p className="mt-1 text-sm leading-relaxed text-stone-600">
+            {data.visual}
+          </p>
+        </div>
+      )}
+
+      {data.blanks && data.blanks.length > 0 && (
+        <div className="mt-4 rounded-lg bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold">Blanks to fill</h3>
+          <p className="mt-1 text-sm text-stone-600">
+            The draft left these open. Fill them in before posting.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-stone-700">
+            {data.blanks.map((blank, i) => (
+              <li key={i}>{blank}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-4">
         <label className="text-sm font-medium" htmlFor="schedule">
