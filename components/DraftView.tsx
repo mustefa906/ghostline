@@ -17,6 +17,7 @@ export type DraftData = {
   scores?: DraftScore[];
   total?: number;
   blanks?: string[];
+  flagged?: { sentence: string; evidence: string }[];
 };
 
 type Props = {
@@ -259,6 +260,27 @@ export default function DraftView({
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-stone-700">
             {data.blanks.map((blank, i) => (
               <li key={i}>{blank}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.flagged && data.flagged.length > 0 && (
+        <div className="mt-4 rounded-lg bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold">Double-check these lines</h3>
+          <p className="mt-1 text-sm text-stone-600">
+            A second pass could not match these lines to your voice note or
+            your interview answers. Check them before posting. Your call
+            stands.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {data.flagged.map((flag, i) => (
+              <li key={i} className="text-sm leading-relaxed text-stone-700">
+                <span className="font-medium text-stone-800">
+                  &ldquo;{flag.sentence}&rdquo;
+                </span>{" "}
+                <span className="text-stone-600">{flag.evidence}</span>
+              </li>
             ))}
           </ul>
         </div>
