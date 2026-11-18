@@ -71,19 +71,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Two attempts at most. A draft that breaks a house rule gets one
-    // rewrite with the exact offending line named, so the founder never
-    // hits a dead end for a fixable slip. The rule still holds: a draft
-    // that breaks it twice is held back.
+    // Two attempts at most. A draft that comes back unreadable or breaks
+    // a house rule gets one rewrite with the problem named, so the
+    // founder never hits a dead end for a fixable slip. The rule still
+    // holds: a draft that breaks it twice is held back.
     let parsed: NonNullable<ReturnType<typeof parseDraftReply>> | null = null;
     let firstRaw = "";
+    let repairContent: string | null = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       const message = await anthropic.client.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 3000,
         system: DRAFT_SYSTEM_PROMPT,
         messages:
-          attempt === 0
+          repairContent === null
             ? [
                 {
                   role: "user",
@@ -104,10 +105,7 @@ export async function POST(req: NextRequest) {
                   }),
                 },
                 { role: "assistant", content: firstRaw },
-                {
-                  role: "user",
-                  content: `That draft broke a house rule: it used a comma followed by the word 'not'. Rewrite the same draft, with the same facts and the same shape, without writing a comma followed by the word 'not'. Answer with JSON only, in the same shape as before.`,
-                },
+                { role: "user", content: repairContent },
               ],
       });
       const raw = message.content
@@ -119,13 +117,18 @@ export async function POST(req: NextRequest) {
 
       const attemptParsed = parseDraftReply(raw);
       if (!attemptParsed) {
-        return NextResponse.json(
-          {
-            error:
-              "The draft came back in a shape the app could not read. Try again.",
-          },
-          { status: 502 },
-        );
+        if (attempt === 1) {
+          return NextResponse.json(
+            {
+              error:
+                "The draft came back in a shape the app could not read. Try again.",
+            },
+            { status: 502 },
+          );
+        }
+        repairContent =
+          "That reply was not valid JSON in the shape I asked for. Answer again with JSON only, in the same shape as before.";
+        continue;
       }
 
       // Mechanical repair for dashes, then a copy-rules check on every version.
@@ -150,6 +153,8 @@ export async function POST(req: NextRequest) {
           { status: 502 },
         );
       }
+      repairContent =
+        "That draft broke a house rule: it used a comma followed by the word 'not'. Rewrite the same draft, with the same facts and the same shape, without writing a comma followed by the word 'not'. Answer with JSON only, in the same shape as before.";
     }
     if (!parsed) {
       return NextResponse.json(
