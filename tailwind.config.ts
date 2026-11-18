@@ -10,7 +10,8 @@ const config: Config = {
         brass: "#b45309",
       },
       fontFamily: {
-        sans: ["ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "Georgia", "serif"],
         mono: ["ui-monospace", "monospace"],
       },
     },
