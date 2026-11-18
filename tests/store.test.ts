@@ -73,4 +73,15 @@ describe("JSON file store", () => {
     expect(found?.name).toBe("Maya Chen");
     expect(await store.findFounderByName("Nobody")).toBeNull();
   });
+
+  it("falls back to the temp directory when the data directory rejects writes", async () => {
+    const blocker = join(dir, "blocker");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(blocker, "a file, not a directory");
+    const fallbackStore = new JsonStore(join(blocker, "ghostline.json"));
+    const founder = await fallbackStore.createFounder("Maya Chen", null);
+    expect(founder.name).toBe("Maya Chen");
+    expect(await fallbackStore.getFounder(founder.id)).toEqual(founder);
+    rmSync(join(tmpdir(), "ghostline"), { recursive: true, force: true });
+  });
 });
