@@ -173,3 +173,36 @@ export function buildDraftUserMessage(args: {
       : "No past posts were given. Match a plain, warm founder voice.";
   return `Raw idea (voice-note transcript):\n${args.transcript}\n\nFacts (interview answers):\n${answersText}\n\nVoice fingerprint (past LinkedIn posts, for cadence, sentence length, and vocabulary only):\n${fingerprintText}\n\nGoal: reach. Format: auto.\n\nWrite the draft as JSON.`;
 }
+
+export const VERIFY_SYSTEM_PROMPT = `You are the fact-checker inside Ghostline. You check a LinkedIn draft against the founder's own words. You do not write or rewrite. You only check.
+
+Check every sentence of the draft against the voice-note transcript and the interview answers. The fingerprint posts are voice only. They never count as evidence.
+
+For each sentence, decide one thing: is every claim in the sentence supported by the transcript or the answers?
+- A sentence is supported when each fact in it appears in the transcript or the answers, with the same meaning.
+- A sentence is unsupported when it combines two facts into a new claim, adds a time, place, number, or name the input never stated, or changes a number's meaning.
+- Names and numbers count as claims. A question to the reader and a call to comment count as supported when they add no fact.
+- When a sentence is supported, name the exact input line that supports it.
+- When a sentence is unsupported, say in a few words what is missing or changed.
+
+You answer with JSON only, no other text. The shape is:
+{
+  "checks": [
+    {"sentence": "the sentence from the draft", "supported": true, "evidence": "the exact input line"},
+    {"sentence": "the sentence from the draft", "supported": false, "evidence": "adds a second loss the input never stated"}
+  ]
+}`;
+
+export function buildVerifyUserMessage(args: {
+  transcript: string;
+  answers: { question: string; answer: string }[];
+  draft: string;
+}): string {
+  const answersText =
+    args.answers.length > 0
+      ? args.answers
+          .map((a) => `Q: ${a.question}\nA: ${a.answer}`)
+          .join("\n\n")
+      : "No interview answers. The founder skipped every question.";
+  return `Voice-note transcript:\n${args.transcript}\n\nInterview answers:\n${answersText}\n\nDraft to check:\n${args.draft}\n\nCheck every sentence as JSON.`;
+}

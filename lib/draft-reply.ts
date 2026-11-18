@@ -8,6 +8,14 @@ export type DraftHook = { width: string; text: string; picked: boolean };
 export type DraftScore = { label: string; score: number };
 export type DraftSource = { paragraph: number; source: string; detail: string };
 
+export type VerifyCheck = {
+  sentence: string;
+  supported: boolean;
+  evidence: string;
+};
+export type VerifyReply = { checks: VerifyCheck[] };
+export type VerifyFlag = { sentence: string; evidence: string };
+
 export type DraftReply = {
   draft: string;
   plain: string;
@@ -137,4 +145,58 @@ export function parseDraftReply(raw: string): DraftReply | null {
   const blanks = asStringArray(parsed.blanks);
   if (blanks !== null) reply.blanks = blanks;
   return reply;
+}
+
+// Parsing for the verification reply. The verifier checks the draft against
+// the transcript and the answers only. A malformed reply means no flags,
+// never a failed draft: the caller treats a null parse as an empty check
+// list, so the draft stands exactly as it was generated.
+
+function asChecks(value: unknown): VerifyCheck[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: VerifyCheck[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const entry = item as Record<string, unknown>;
+    if (
+      typeof entry.sentence !== "string" ||
+      typeof entry.supported !== "boolean" ||
+      typeof entry.evidence !== "string"
+    ) {
+      return null;
+    }
+    out.push({
+      sentence: entry.sentence,
+      supported: entry.supported,
+      evidence: entry.evidence,
+    });
+  }
+  return out;
+}
+
+export function parseVerifyReply(raw: string): VerifyReply | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<
+      string,
+      unknown
+    >;
+    const checks = asChecks(parsed.checks);
+    if (checks === null) return null;
+    return { checks };
+  } catch {
+    return null;
+  }
+}
+
+// The unsupported sentences, each with the note on what is missing or
+// changed. An empty list means every checked sentence held up, or the
+// verification never ran.
+export function verifyFlags(reply: VerifyReply | null): VerifyFlag[] {
+  if (reply === null) return [];
+  return reply.checks
+    .filter((check) => !check.supported)
+    .map((check) => ({ sentence: check.sentence, evidence: check.evidence }));
 }
