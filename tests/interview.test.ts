@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftUserMessage, buildInterviewUserMessage } from "../lib/prompts";
+import { passesCopyRules } from "../lib/copy-rules";
+import {
+  DRAFT_SYSTEM_PROMPT,
+  buildDraftUserMessage,
+  buildInterviewUserMessage,
+} from "../lib/prompts";
 
 // The interview caps live in the route, but the rules they enforce are
 // checked here against the prompt builders: skipped answers never reach the
@@ -76,5 +81,64 @@ describe("draft input rules", () => {
     expect(message).toContain("A: One owner.");
     expect(message).toContain("Post 1:\nI write short lines.");
     expect(message).not.toContain("invent");
+  });
+
+  it("labels the transcript as the raw idea and the answers as the facts", () => {
+    const message = buildDraftUserMessage({
+      transcript: "We lost a client.",
+      answers: [{ question: "What changed?", answer: "One owner." }],
+      fingerprint: ["I write short lines."],
+    });
+    expect(message).toContain("Raw idea (voice-note transcript)");
+    expect(message).toContain("Facts (interview answers)");
+    expect(message).toContain("Goal: reach. Format: auto.");
+  });
+
+  it("labels the fingerprint as voice only, never as facts", () => {
+    const message = buildDraftUserMessage({
+      transcript: "We lost a client.",
+      answers: [],
+      fingerprint: ["I write short lines."],
+    });
+    expect(message).toContain("vocabulary only");
+  });
+});
+
+describe("draft prompt rules", () => {
+  it("keeps the truth rule absolute and first", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("TRUTH RULE");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Never invent numbers");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("[ADD:");
+    expect(DRAFT_SYSTEM_PROMPT.indexOf("TRUTH RULE")).toBeLessThan(
+      DRAFT_SYSTEM_PROMPT.indexOf("STEP 1"),
+    );
+  });
+
+  it("asks for three hooks at three widths and picks the best", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("WRITE 3 HOOKS");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Broad");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Narrow");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Niche");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("rehook");
+  });
+
+  it("grades itself with Truth as an automatic fail", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain("GRADE YOURSELF");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("13+ out of 16");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("Truth = 2");
+    expect(DRAFT_SYSTEM_PROMPT).toContain("automatic fail");
+  });
+
+  it("matches the voice from the fingerprint, not from a style reference", () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain(
+      "cadence, sentence length, and vocabulary from the fingerprint",
+    );
+    expect(DRAFT_SYSTEM_PROMPT).toContain(
+      "The voice itself comes from the fingerprint",
+    );
+  });
+
+  it("passes the house copy rules itself", () => {
+    expect(passesCopyRules(DRAFT_SYSTEM_PROMPT)).toBe(true);
   });
 });
