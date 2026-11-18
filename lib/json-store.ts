@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "path";
 import type {
   Draft,
@@ -30,13 +31,20 @@ function emptyData(): JsonData {
 
 // Local JSON file store. Used when DATABASE_URL is empty or Postgres cannot
 // be reached, so the app still runs end to end in development and in the
-// sandbox. The file lives under data/ and is gitignored.
+// sandbox. The file lives under data/ and is gitignored. Serverless hosts
+// keep the app directory read-only, so a write that fails there moves the
+// file to the system temp directory and retries once.
 export class JsonStore implements Store {
   private filePath: string;
+  private fellBack = false;
 
   constructor(filePath?: string) {
     this.filePath =
       filePath ?? join(process.cwd(), "data", "ghostline.json");
+  }
+
+  private fallbackPath(): string {
+    return join(tmpdir(), "ghostline", "ghostline.json");
   }
 
   private read(): JsonData {
@@ -51,10 +59,23 @@ export class JsonStore implements Store {
   }
 
   private write(data: JsonData): void {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const tmp = `${this.filePath}.tmp`;
+    try {
+      this.writeTo(this.filePath, data);
+    } catch (error) {
+      if (this.fellBack || this.filePath === this.fallbackPath()) {
+        throw error;
+      }
+      this.fellBack = true;
+      this.filePath = this.fallbackPath();
+      this.writeTo(this.filePath, data);
+    }
+  }
+
+  private writeTo(filePath: string, data: JsonData): void {
+    mkdirSync(dirname(filePath), { recursive: true });
+    const tmp = `${filePath}.tmp`;
     writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
-    renameSync(tmp, this.filePath);
+    renameSync(tmp, filePath);
   }
 
   async createFounder(name: string, linkedinUrl: string | null): Promise<Founder> {
