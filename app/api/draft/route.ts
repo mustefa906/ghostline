@@ -71,24 +71,86 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const message = await anthropic.client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 3000,
-      system: DRAFT_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: buildDraftUserMessage({ transcript, answers, fingerprint }),
-        },
-      ],
-    });
-    const raw = message.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
+    // Two attempts at most. A draft that breaks a house rule gets one
+    // rewrite with the exact offending line named, so the founder never
+    // hits a dead end for a fixable slip. The rule still holds: a draft
+    // that breaks it twice is held back.
+    let parsed: NonNullable<ReturnType<typeof parseDraftReply>> | null = null;
+    let firstRaw = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const message = await anthropic.client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 3000,
+        system: DRAFT_SYSTEM_PROMPT,
+        messages:
+          attempt === 0
+            ? [
+                {
+                  role: "user",
+                  content: buildDraftUserMessage({
+                    transcript,
+                    answers,
+                    fingerprint,
+                  }),
+                },
+              ]
+            : [
+                {
+                  role: "user",
+                  content: buildDraftUserMessage({
+                    transcript,
+                    answers,
+                    fingerprint,
+                  }),
+                },
+                { role: "assistant", content: firstRaw },
+                {
+                  role: "user",
+                  content: `That draft broke a house rule: it used a comma followed by the word 'not'. Rewrite the same draft, with the same facts and the same shape, without writing a comma followed by the word 'not'. Answer with JSON only, in the same shape as before.`,
+                },
+              ],
+      });
+      const raw = message.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      if (attempt === 0) firstRaw = raw;
 
-    const parsed = parseDraftReply(raw);
+      const attemptParsed = parseDraftReply(raw);
+      if (!attemptParsed) {
+        return NextResponse.json(
+          {
+            error:
+              "The draft came back in a shape the app could not read. Try again.",
+          },
+          { status: 502 },
+        );
+      }
+
+      // Mechanical repair for dashes, then a copy-rules check on every version.
+      const attemptDraft = repairDashes(attemptParsed.draft.trim());
+      const attemptPlain = repairDashes(attemptParsed.plain.trim());
+      const attemptShort = repairDashes(attemptParsed.short.trim());
+      const violations = [
+        ...checkCopyRules(attemptDraft),
+        ...checkCopyRules(attemptPlain),
+        ...checkCopyRules(attemptShort),
+      ];
+      if (violations.length === 0) {
+        parsed = attemptParsed;
+        break;
+      }
+      if (attempt === 1) {
+        return NextResponse.json(
+          {
+            error:
+              "The draft broke a house writing rule, so it was held back. Try again.",
+          },
+          { status: 502 },
+        );
+      }
+    }
     if (!parsed) {
       return NextResponse.json(
         {
@@ -99,24 +161,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Mechanical repair for dashes, then a copy-rules check on every version.
+    // The loop only keeps a draft that passed the copy check, so the
+    // text below is already clean. Repair the dashes once for the reply.
     const draft = repairDashes(parsed.draft.trim());
     const plain = repairDashes(parsed.plain.trim());
     const short = repairDashes(parsed.short.trim());
-    const violations = [
-      ...checkCopyRules(draft),
-      ...checkCopyRules(plain),
-      ...checkCopyRules(short),
-    ];
-    if (violations.length > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "The draft broke a house writing rule, so it was held back. Try again.",
-        },
-        { status: 502 },
-      );
-    }
 
     // Same dash repair on the new engagement fields. A missing field stays
     // missing; the response drops it instead of failing the draft.
