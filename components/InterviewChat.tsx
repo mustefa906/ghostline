@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Recorder, { type RecorderResult } from "./Recorder";
+import type { StoryLead } from "@/lib/store";
 
 export type ChatTurn = {
   role: "agent" | "founder";
@@ -12,12 +13,14 @@ export type ChatTurn = {
 type Props = {
   transcript: string;
   sessionId: string | null;
+  lead?: StoryLead | null;
   onFinish: (turns: ChatTurn[], summary: string) => void;
 };
 
 export default function InterviewChat({
   transcript,
   sessionId,
+  lead,
   onFinish,
 }: Props) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -47,6 +50,7 @@ export default function InterviewChat({
         turns: nextTurns,
         mode,
         sessionId,
+        lead: lead ?? undefined,
       }),
     });
     const data = await res.json();
@@ -187,6 +191,11 @@ export default function InterviewChat({
         Up to 3 questions, one at a time. A vague answer gets one clarifying
         question. Skipped questions stay skipped.
       </p>
+      {lead && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-stone-700">
+          Interviewing about: {lead.title}
+        </p>
+      )}
 
       {!started && !done && (
         <button
