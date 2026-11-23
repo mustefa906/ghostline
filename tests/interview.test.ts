@@ -60,6 +60,27 @@ describe("interview flow rules", () => {
     expect(message).toContain("Interviewer: What went wrong?");
   });
 
+  it("adds the lead as context for questions and leaves it out otherwise", () => {
+    const withLead = buildInterviewUserMessage({
+      transcript: "We lost a client.",
+      turns: [],
+      lead: {
+        title: "Beta walked away",
+        whatHappened: "Beta closed lost after 4 weeks.",
+        angle: "The onboarding gap showed up again.",
+        sourceLabel: "HubSpot: Beta entered Closed Lost, Thu Nov 19",
+      },
+    });
+    expect(withLead).toContain("Story lead (context for your questions only)");
+    expect(withLead).toContain("Beta walked away");
+    expect(withLead).toContain("The onboarding gap showed up again.");
+    const withoutLead = buildInterviewUserMessage({
+      transcript: "We lost a client.",
+      turns: [],
+    });
+    expect(withoutLead).not.toContain("Story lead");
+  });
+
   it("says plainly when no questions were answered", () => {
     const message = buildDraftUserMessage({
       transcript: "We lost a client.",
