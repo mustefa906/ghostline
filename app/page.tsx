@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConnectSources from "@/components/ConnectSources";
 import DraftView, { type DraftData } from "@/components/DraftView";
 import FingerprintForm from "@/components/FingerprintForm";
 import InterviewChat, { type ChatTurn } from "@/components/InterviewChat";
 import QueueView from "@/components/QueueView";
 import Recorder, { type RecorderResult } from "@/components/Recorder";
+import StoryLeads from "@/components/StoryLeads";
+import type { StoryLead } from "@/lib/store";
 import DemoLoop from "@/components/DemoLoop";
 import FingerprintVisual from "@/components/FingerprintVisual";
 import ProofStrip from "@/components/ProofStrip";
@@ -51,6 +54,8 @@ export default function Home() {
   const [draftData, setDraftData] = useState<DraftData | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+
+  const [activeLead, setActiveLead] = useState<StoryLead | null>(null);
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -129,14 +134,16 @@ export default function Home() {
     setTranscript("");
     setSessionId(null);
     setDraftData(null);
+    setActiveLead(null);
   }
 
-  function startNewPost() {
+  function startNewPost(lead?: StoryLead) {
     setTranscript("");
     setSessionId(null);
     setDraftData(null);
     setIdeaError(null);
     setDraftError(null);
+    setActiveLead(lead ?? null);
     setPhase("idea");
   }
 
@@ -173,6 +180,15 @@ export default function Home() {
       setTranscript(text);
       setTranscriptSaved(false);
       setSessionId(sessionData.session.id);
+      // The lead is used now that the session exists. A failed mark
+      // changes nothing about the interview.
+      if (activeLead) {
+        void fetch(`/api/leads/${activeLead.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "used" }),
+        }).catch(() => undefined);
+      }
       setPhase("interview");
     } catch (e) {
       setIdeaError(e instanceof Error ? e.message : "Something went wrong.");
@@ -542,6 +558,12 @@ export default function Home() {
 
           {phase === "profile" && (
             <section className="space-y-5">
+              <StoryLeads
+                founderId={founder.id}
+                demo={demo}
+                onPickLead={(lead) => startNewPost(lead)}
+              />
+              <ConnectSources founderId={founder.id} />
               <FingerprintForm
                 founderId={founder.id}
                 initialPosts={fingerprint}
@@ -549,7 +571,7 @@ export default function Home() {
               />
               <button
                 type="button"
-                onClick={startNewPost}
+                onClick={() => startNewPost()}
                 className="rounded-full bg-brass px-6 py-2.5 text-sm font-semibold text-white"
               >
                 Start a new post
@@ -559,6 +581,25 @@ export default function Home() {
 
           {phase === "idea" && (
             <section className="space-y-5">
+              {activeLead && (
+                <div className="rounded-xl border border-stone-200 bg-amber-50 p-5 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                    Story lead
+                  </p>
+                  <p className="mt-1 font-display text-lg font-semibold">
+                    {activeLead.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                    {activeLead.whatHappened}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-stone-600">
+                    {activeLead.angle}
+                  </p>
+                  <p className="mt-2 text-xs text-stone-400">
+                    {activeLead.sourceLabel}
+                  </p>
+                </div>
+              )}
               <div>
                 <h2 className="font-display text-xl font-semibold">
                   One idea, one voice note
@@ -612,6 +653,7 @@ export default function Home() {
               <InterviewChat
                 transcript={transcript}
                 sessionId={sessionId}
+                lead={activeLead}
                 onFinish={(turns) => void generateDraft(turns)}
               />
 
@@ -641,6 +683,11 @@ export default function Home() {
 
           {phase === "draft" && draftData && (
             <section className="space-y-5">
+              {activeLead && (
+                <p className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-stone-600">
+                  Started from: {activeLead.title}
+                </p>
+              )}
               <DraftView
                 data={draftData}
                 sessionId={sessionId}
@@ -649,7 +696,7 @@ export default function Home() {
               />
               <button
                 type="button"
-                onClick={startNewPost}
+                onClick={() => startNewPost()}
                 className="rounded-full bg-stone-100 px-6 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-200"
               >
                 Start another post
