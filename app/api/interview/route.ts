@@ -67,6 +67,14 @@ export async function POST(req: NextRequest) {
     turns?: Turn[];
     mode?: "question" | "summary";
     sessionId?: string;
+    lead?: {
+      id?: string;
+      title?: string;
+      whatHappened?: string;
+      angle?: string;
+      openingQuestion?: string;
+      sourceLabel?: string;
+    };
   };
   try {
     body = await req.json();
@@ -86,6 +94,45 @@ export async function POST(req: NextRequest) {
       { error: "Add a transcript first, then start the interview." },
       { status: 400 },
     );
+  }
+
+  const lead = body.lead;
+  const leadContext =
+    lead &&
+    typeof lead.title === "string" &&
+    typeof lead.whatHappened === "string" &&
+    typeof lead.angle === "string" &&
+    typeof lead.sourceLabel === "string"
+      ? {
+          title: lead.title,
+          whatHappened: lead.whatHappened,
+          angle: lead.angle,
+          sourceLabel: lead.sourceLabel,
+        }
+      : undefined;
+
+  // A lead session opens with the lead's own question, with no model call.
+  // It runs before the key check on purpose: the question is pre-written.
+  if (
+    mode === "question" &&
+    turns.length === 0 &&
+    lead &&
+    typeof lead.openingQuestion === "string" &&
+    lead.openingQuestion.trim().length > 0
+  ) {
+    const reply = {
+      kind: "question" as const,
+      text: lead.openingQuestion.trim(),
+    };
+    if (body.sessionId) {
+      try {
+        const store = await getStore();
+        await store.addTurn(body.sessionId, "agent", reply.text, reply.kind);
+      } catch {
+        // The interview still works when persistence fails.
+      }
+    }
+    return NextResponse.json(reply);
   }
 
   const anthropic = getAnthropicClient();
@@ -134,7 +181,11 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: "user",
-          content: buildInterviewUserMessage({ transcript, turns }),
+          content: buildInterviewUserMessage({
+            transcript,
+            turns,
+            lead: leadContext,
+          }),
         },
       ],
     });
