@@ -3,12 +3,20 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { dirname, join } from "path";
 import type {
+  Connection,
+  ConnectionInput,
+  ConnectionProvider,
+  ConnectionStatus,
+  DismissReason,
   Draft,
   DraftInput,
   Founder,
   InterviewTurn,
+  LeadInput,
+  LeadStatus,
   Session,
   Store,
+  StoryLead,
 } from "./store";
 
 type JsonData = {
@@ -17,6 +25,8 @@ type JsonData = {
   sessions: Session[];
   turns: InterviewTurn[];
   drafts: Draft[];
+  connections: Connection[];
+  leads: StoryLead[];
 };
 
 function emptyData(): JsonData {
@@ -26,6 +36,8 @@ function emptyData(): JsonData {
     sessions: [],
     turns: [],
     drafts: [],
+    connections: [],
+    leads: [],
   };
 }
 
@@ -234,5 +246,139 @@ export class JsonStore implements Store {
     if (data.drafts.length === before) return false;
     this.write(data);
     return true;
+  }
+
+  // Saving a connection for a provider the founder already connected
+  // replaces the stored tokens instead of adding a second row.
+  async saveConnection(input: ConnectionInput): Promise<Connection> {
+    const data = this.read();
+    const now = new Date().toISOString();
+    const match = data.connections.find(
+      (c) => c.founderId === input.founderId && c.provider === input.provider,
+    );
+    if (match) {
+      match.accountLabel = input.accountLabel;
+      match.accessTokenEncrypted = input.accessTokenEncrypted;
+      match.refreshTokenEncrypted = input.refreshTokenEncrypted;
+      match.tokenExpiresAt = input.tokenExpiresAt;
+      match.status = "active";
+      match.updatedAt = now;
+      this.write(data);
+      return match;
+    }
+    const connection: Connection = {
+      id: randomUUID(),
+      founderId: input.founderId,
+      provider: input.provider,
+      accountLabel: input.accountLabel,
+      accessTokenEncrypted: input.accessTokenEncrypted,
+      refreshTokenEncrypted: input.refreshTokenEncrypted,
+      tokenExpiresAt: input.tokenExpiresAt,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+    data.connections.push(connection);
+    this.write(data);
+    return connection;
+  }
+
+  async updateConnection(
+    id: string,
+    patch: {
+      status?: ConnectionStatus;
+      accountLabel?: string;
+      accessTokenEncrypted?: string;
+      refreshTokenEncrypted?: string;
+      tokenExpiresAt?: string | null;
+    },
+  ): Promise<Connection | null> {
+    const data = this.read();
+    const connection = data.connections.find((c) => c.id === id);
+    if (!connection) return null;
+    if (patch.status !== undefined) connection.status = patch.status;
+    if (patch.accountLabel !== undefined)
+      connection.accountLabel = patch.accountLabel;
+    if (patch.accessTokenEncrypted !== undefined)
+      connection.accessTokenEncrypted = patch.accessTokenEncrypted;
+    if (patch.refreshTokenEncrypted !== undefined)
+      connection.refreshTokenEncrypted = patch.refreshTokenEncrypted;
+    if (patch.tokenExpiresAt !== undefined)
+      connection.tokenExpiresAt = patch.tokenExpiresAt;
+    connection.updatedAt = new Date().toISOString();
+    this.write(data);
+    return connection;
+  }
+
+  async getConnections(founderId: string): Promise<Connection[]> {
+    return this.read().connections.filter((c) => c.founderId === founderId);
+  }
+
+  // Deleting a connection also deletes the leads that came from it.
+  async deleteConnection(
+    founderId: string,
+    provider: ConnectionProvider,
+  ): Promise<boolean> {
+    const data = this.read();
+    const before = data.connections.length;
+    data.connections = data.connections.filter(
+      (c) => !(c.founderId === founderId && c.provider === provider),
+    );
+    if (data.connections.length === before) return false;
+    const sourceType = provider === "google" ? "calendar" : "hubspot";
+    data.leads = data.leads.filter(
+      (l) => !(l.founderId === founderId && l.sourceType === sourceType),
+    );
+    this.write(data);
+    return true;
+  }
+
+  async createLeads(leads: LeadInput[]): Promise<StoryLead[]> {
+    const data = this.read();
+    const created: StoryLead[] = leads.map((l) => ({
+      id: randomUUID(),
+      founderId: l.founderId,
+      sourceType: l.sourceType,
+      sourceRef: l.sourceRef,
+      sourceLabel: l.sourceLabel,
+      title: l.title,
+      whatHappened: l.whatHappened,
+      angle: l.angle,
+      openingQuestion: l.openingQuestion,
+      score: l.score,
+      status: "new",
+      dismissReason: null,
+      weekOf: l.weekOf,
+      createdAt: new Date().toISOString(),
+    }));
+    data.leads.push(...created);
+    this.write(data);
+    return created;
+  }
+
+  async listLeads(
+    founderId: string,
+    weekOf: string,
+  ): Promise<StoryLead[]> {
+    return this.read().leads.filter(
+      (l) => l.founderId === founderId && l.weekOf === weekOf,
+    );
+  }
+
+  async updateLead(
+    id: string,
+    patch: {
+      status?: LeadStatus;
+      dismissReason?: DismissReason | null;
+    },
+  ): Promise<StoryLead | null> {
+    const data = this.read();
+    const lead = data.leads.find((l) => l.id === id);
+    if (!lead) return null;
+    if (patch.status !== undefined) lead.status = patch.status;
+    if (patch.dismissReason !== undefined)
+      lead.dismissReason = patch.dismissReason;
+    this.write(data);
+    return lead;
   }
 }

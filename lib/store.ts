@@ -1,12 +1,14 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { tryPostgres, type Db } from "./db";
 import { JsonStore } from "./json-store";
 import {
+  connections,
   drafts,
   fingerprintPosts,
   founders,
   interviewTurns,
   sessions,
+  storyLeads,
 } from "./schema";
 
 export type Founder = {
@@ -55,6 +57,65 @@ export type Draft = {
   createdAt: string;
 };
 
+export type ConnectionProvider = "google" | "hubspot";
+export type ConnectionStatus = "active" | "broken";
+
+export type Connection = {
+  id: string;
+  founderId: string;
+  provider: ConnectionProvider;
+  accountLabel: string;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string;
+  tokenExpiresAt: string | null;
+  status: ConnectionStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConnectionInput = {
+  founderId: string;
+  provider: ConnectionProvider;
+  accountLabel: string;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string;
+  tokenExpiresAt: string | null;
+};
+
+export type LeadSourceType = "calendar" | "hubspot" | "note";
+export type LeadStatus = "new" | "used" | "dismissed" | "expired";
+export type DismissReason = "not a story" | "too sensitive" | "already posted";
+
+export type StoryLead = {
+  id: string;
+  founderId: string;
+  sourceType: LeadSourceType;
+  sourceRef: string;
+  sourceLabel: string;
+  title: string;
+  whatHappened: string;
+  angle: string;
+  openingQuestion: string;
+  score: number;
+  status: LeadStatus;
+  dismissReason: DismissReason | null;
+  weekOf: string;
+  createdAt: string;
+};
+
+export type LeadInput = {
+  founderId: string;
+  sourceType: LeadSourceType;
+  sourceRef: string;
+  sourceLabel: string;
+  title: string;
+  whatHappened: string;
+  angle: string;
+  openingQuestion: string;
+  score: number;
+  weekOf: string;
+};
+
 export interface Store {
   createFounder(name: string, linkedinUrl: string | null): Promise<Founder>;
   getFounder(id: string): Promise<Founder | null>;
@@ -86,6 +147,31 @@ export interface Store {
   getDraft(id: string): Promise<Draft | null>;
   listDrafts(founderId: string): Promise<Draft[]>;
   deleteDraft(id: string): Promise<boolean>;
+  saveConnection(input: ConnectionInput): Promise<Connection>;
+  updateConnection(
+    id: string,
+    patch: {
+      status?: ConnectionStatus;
+      accountLabel?: string;
+      accessTokenEncrypted?: string;
+      refreshTokenEncrypted?: string;
+      tokenExpiresAt?: string | null;
+    },
+  ): Promise<Connection | null>;
+  getConnections(founderId: string): Promise<Connection[]>;
+  deleteConnection(
+    founderId: string,
+    provider: ConnectionProvider,
+  ): Promise<boolean>;
+  createLeads(leads: LeadInput[]): Promise<StoryLead[]>;
+  listLeads(founderId: string, weekOf: string): Promise<StoryLead[]>;
+  updateLead(
+    id: string,
+    patch: {
+      status?: LeadStatus;
+      dismissReason?: DismissReason | null;
+    },
+  ): Promise<StoryLead | null>;
 }
 
 // Postgres implementation. Dates come back as Date objects from node-postgres,
@@ -303,6 +389,216 @@ class PostgresStore implements Store {
       .where(eq(drafts.id, id))
       .returning({ id: drafts.id });
     return rows.length > 0;
+  }
+
+  // Saving a connection for a provider the founder already connected
+  // replaces the stored tokens instead of adding a second row.
+  async saveConnection(input: ConnectionInput): Promise<Connection> {
+    const existing = await this.db
+      .select()
+      .from(connections)
+      .where(eq(connections.founderId, input.founderId))
+      .limit(10);
+    const match = existing.find((r) => r.provider === input.provider);
+    if (match) {
+      const [row] = await this.db
+        .update(connections)
+        .set({
+          accountLabel: input.accountLabel,
+          accessTokenEncrypted: input.accessTokenEncrypted,
+          refreshTokenEncrypted: input.refreshTokenEncrypted,
+          tokenExpiresAt: input.tokenExpiresAt
+            ? new Date(input.tokenExpiresAt)
+            : null,
+          status: "active",
+          updatedAt: new Date(),
+        })
+        .where(eq(connections.id, match.id))
+        .returning();
+      return this.toConnection(row);
+    }
+    const [row] = await this.db
+      .insert(connections)
+      .values({
+        founderId: input.founderId,
+        provider: input.provider,
+        accountLabel: input.accountLabel,
+        accessTokenEncrypted: input.accessTokenEncrypted,
+        refreshTokenEncrypted: input.refreshTokenEncrypted,
+        tokenExpiresAt: input.tokenExpiresAt
+          ? new Date(input.tokenExpiresAt)
+          : null,
+        status: "active",
+      })
+      .returning();
+    return this.toConnection(row);
+  }
+
+  async updateConnection(
+    id: string,
+    patch: {
+      status?: ConnectionStatus;
+      accountLabel?: string;
+      accessTokenEncrypted?: string;
+      refreshTokenEncrypted?: string;
+      tokenExpiresAt?: string | null;
+    },
+  ): Promise<Connection | null> {
+    const values: {
+      status?: string;
+      accountLabel?: string;
+      accessTokenEncrypted?: string;
+      refreshTokenEncrypted?: string;
+      tokenExpiresAt?: Date | null;
+      updatedAt?: Date;
+    } = { updatedAt: new Date() };
+    if (patch.status !== undefined) values.status = patch.status;
+    if (patch.accountLabel !== undefined)
+      values.accountLabel = patch.accountLabel;
+    if (patch.accessTokenEncrypted !== undefined)
+      values.accessTokenEncrypted = patch.accessTokenEncrypted;
+    if (patch.refreshTokenEncrypted !== undefined)
+      values.refreshTokenEncrypted = patch.refreshTokenEncrypted;
+    if (patch.tokenExpiresAt !== undefined) {
+      values.tokenExpiresAt = patch.tokenExpiresAt
+        ? new Date(patch.tokenExpiresAt)
+        : null;
+    }
+    const [row] = await this.db
+      .update(connections)
+      .set(values)
+      .where(eq(connections.id, id))
+      .returning();
+    return row ? this.toConnection(row) : null;
+  }
+
+  async getConnections(founderId: string): Promise<Connection[]> {
+    const rows = await this.db
+      .select()
+      .from(connections)
+      .where(eq(connections.founderId, founderId))
+      .orderBy(asc(connections.createdAt));
+    return rows.map((r) => this.toConnection(r));
+  }
+
+  // Deleting a connection also deletes the leads that came from it.
+  async deleteConnection(
+    founderId: string,
+    provider: ConnectionProvider,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .delete(connections)
+      .where(
+        and(
+          eq(connections.founderId, founderId),
+          eq(connections.provider, provider),
+        ),
+      )
+      .returning({ id: connections.id });
+    if (rows.length === 0) return false;
+    const sourceType: LeadSourceType =
+      provider === "google" ? "calendar" : "hubspot";
+    await this.db
+      .delete(storyLeads)
+      .where(
+        and(
+          eq(storyLeads.founderId, founderId),
+          eq(storyLeads.sourceType, sourceType),
+        ),
+      );
+    return true;
+  }
+
+  async createLeads(leads: LeadInput[]): Promise<StoryLead[]> {
+    if (leads.length === 0) return [];
+    const rows = await this.db
+      .insert(storyLeads)
+      .values(
+        leads.map((l) => ({
+          founderId: l.founderId,
+          sourceType: l.sourceType,
+          sourceRef: l.sourceRef,
+          sourceLabel: l.sourceLabel,
+          title: l.title,
+          whatHappened: l.whatHappened,
+          angle: l.angle,
+          openingQuestion: l.openingQuestion,
+          score: l.score,
+          status: "new",
+          weekOf: l.weekOf,
+        })),
+      )
+      .returning();
+    return rows.map((r) => this.toLead(r));
+  }
+
+  async listLeads(
+    founderId: string,
+    weekOf: string,
+  ): Promise<StoryLead[]> {
+    const rows = await this.db
+      .select()
+      .from(storyLeads)
+      .where(eq(storyLeads.founderId, founderId))
+      .orderBy(asc(storyLeads.createdAt));
+    return rows
+      .filter((r) => r.weekOf === weekOf)
+      .map((r) => this.toLead(r));
+  }
+
+  async updateLead(
+    id: string,
+    patch: {
+      status?: LeadStatus;
+      dismissReason?: DismissReason | null;
+    },
+  ): Promise<StoryLead | null> {
+    const values: { status?: string; dismissReason?: string | null } = {};
+    if (patch.status !== undefined) values.status = patch.status;
+    if (patch.dismissReason !== undefined)
+      values.dismissReason = patch.dismissReason;
+    const [row] = await this.db
+      .update(storyLeads)
+      .set(values)
+      .where(eq(storyLeads.id, id))
+      .returning();
+    return row ? this.toLead(row) : null;
+  }
+
+  private toConnection(row: typeof connections.$inferSelect): Connection {
+    return {
+      id: row.id,
+      founderId: row.founderId,
+      provider: row.provider as ConnectionProvider,
+      accountLabel: row.accountLabel,
+      accessTokenEncrypted: row.accessTokenEncrypted,
+      refreshTokenEncrypted: row.refreshTokenEncrypted,
+      tokenExpiresAt: row.tokenExpiresAt
+        ? row.tokenExpiresAt.toISOString()
+        : null,
+      status: row.status as ConnectionStatus,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  private toLead(row: typeof storyLeads.$inferSelect): StoryLead {
+    return {
+      id: row.id,
+      founderId: row.founderId,
+      sourceType: row.sourceType as LeadSourceType,
+      sourceRef: row.sourceRef,
+      sourceLabel: row.sourceLabel,
+      title: row.title,
+      whatHappened: row.whatHappened,
+      angle: row.angle,
+      openingQuestion: row.openingQuestion,
+      score: row.score,
+      status: row.status as LeadStatus,
+      dismissReason: row.dismissReason as DismissReason | null,
+      weekOf: row.weekOf,
+      createdAt: row.createdAt.toISOString(),
+    };
   }
 
   private toDraft(row: typeof drafts.$inferSelect): Draft {

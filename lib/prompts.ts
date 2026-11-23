@@ -149,11 +149,20 @@ You answer with JSON only, no other text. The shape is:
 export function buildInterviewUserMessage(args: {
   transcript: string;
   turns: { role: string; body: string; kind?: string }[];
+  lead?: {
+    title: string;
+    whatHappened: string;
+    angle: string;
+    sourceLabel: string;
+  };
 }): string {
   const history = args.turns
     .map((t) => `${t.role === "agent" ? "Interviewer" : "Founder"}: ${t.body}`)
     .join("\n");
-  return `Transcript of the founder's voice note:\n${args.transcript}\n\nInterview so far:\n${history || "No questions asked yet."}\n\nReply with the next JSON message.`;
+  const leadContext = args.lead
+    ? `\n\nStory lead (context for your questions only):\n${args.lead.title}\nWhat happened: ${args.lead.whatHappened}\nAngle: ${args.lead.angle}\nSource: ${args.lead.sourceLabel}`
+    : "";
+  return `Transcript of the founder's voice note:\n${args.transcript}\n\nInterview so far:\n${history || "No questions asked yet."}${leadContext}\n\nReply with the next JSON message.`;
 }
 
 export function buildDraftUserMessage(args: {
@@ -205,4 +214,53 @@ export function buildVerifyUserMessage(args: {
           .join("\n\n")
       : "No interview answers. The founder skipped every question.";
   return `Voice-note transcript:\n${args.transcript}\n\nInterview answers:\n${answersText}\n\nDraft to check:\n${args.draft}\n\nCheck every sentence as JSON.`;
+}
+
+export const HARVEST_SYSTEM_PROMPT = `You are the story finder inside Ghostline. You read a founder's week and pick the stories worth posting about. You only use what the source records state. You never invent a number, a name, or a date.
+
+Rules:
+- Read the source digest. It lists calendar events and HubSpot deal changes from the last 7 days, plus angles the founder already covered and leads they dismissed.
+- Pick at most 3 leads. Rank them with tension first, then specificity, then freshness.
+- Tension means something almost went wrong, a loss, an objection, a churn save, or a first of any kind.
+- Specificity means a real number, a real name, or a real moment.
+- For each lead, write a title, one line saying what happened, one line saying why it matters, and the opening question the interview would ask first.
+- Every number, name, and date in a lead must come from the source digest. When the digest does not state it, leave it out.
+- When an angle matches one the founder already covered, skip it.
+- When nothing in the digest is post-worthy, return no leads. Saying nothing is better than inventing a story.
+- Follow the house writing rules below.
+
+${HOUSE_RULES}
+
+You answer with JSON only, no other text. The shape is:
+{
+  "leads": [
+    {
+      "title": "the lead title",
+      "whatHappened": "one line, grounded in the source",
+      "angle": "one line, the tension or the lesson",
+      "openingQuestion": "the first interview question",
+      "sourceRef": "the calendar event id or the deal id from the digest",
+      "sourceLabel": "the human label from the digest",
+      "sourceType": "calendar",
+      "score": 3
+    }
+  ]
+}
+
+"score" is 1 to 3. Give 3 to a lead with real tension and a real number or name. Give 2 to a lead with tension but no number. Give 1 to a lead worth a look with neither. "sourceType" is "calendar", "hubspot", or "note". "sourceRef" must match an id in the digest. When nothing is post-worthy, return {"leads": []}.`;
+
+export function buildHarvestUserMessage(args: {
+  digest: string;
+  coveredAngles: string[];
+  dismissed: string[];
+}): string {
+  const covered =
+    args.coveredAngles.length > 0
+      ? args.coveredAngles.map((a) => `- ${a}`).join("\n")
+      : "None.";
+  const dismissed =
+    args.dismissed.length > 0
+      ? args.dismissed.map((d) => `- ${d}`).join("\n")
+      : "None.";
+  return `Source digest for the last 7 days:\n${args.digest}\n\nAngles the founder already covered (skip these):\n${covered}\n\nLeads the founder dismissed this week (skip these):\n${dismissed}\n\nPick up to 3 leads as JSON.`;
 }

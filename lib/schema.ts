@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const founders = pgTable("founders", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -51,5 +51,42 @@ export const drafts = pgTable("drafts", {
   editedBody: text("edited_body"),
   status: text("status").notNull().default("draft"),
   scheduledFor: timestamp("scheduled_for"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// One row per founder per connected source. Tokens are stored encrypted;
+// the plaintext never reaches the database.
+export const connections = pgTable("connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  founderId: uuid("founder_id")
+    .notNull()
+    .references(() => founders.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  accountLabel: text("account_label").notNull().default(""),
+  accessTokenEncrypted: text("access_token_encrypted").notNull(),
+  refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// One story lead per row. weekOf holds the Monday of the week as YYYY-MM-DD.
+export const storyLeads = pgTable("story_leads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  founderId: uuid("founder_id")
+    .notNull()
+    .references(() => founders.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(),
+  sourceRef: text("source_ref").notNull(),
+  sourceLabel: text("source_label").notNull(),
+  title: text("title").notNull(),
+  whatHappened: text("what_happened").notNull(),
+  angle: text("angle").notNull(),
+  openingQuestion: text("opening_question").notNull(),
+  score: integer("score").notNull().default(1),
+  status: text("status").notNull().default("new"),
+  dismissReason: text("dismiss_reason"),
+  weekOf: text("week_of").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

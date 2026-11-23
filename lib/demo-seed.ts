@@ -2,6 +2,8 @@
 // All copy follows the house rules: simple hyphens, spaced lines, and
 // no defining a thing by its opposite.
 
+import type { SourceDigest } from "./harvest";
+
 export const DEMO_FOUNDER = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Maya Chen",
@@ -94,3 +96,50 @@ export function demoScheduledFor(): string {
   d.setHours(9, 0, 0, 0);
   return d.toISOString();
 }
+
+// Demo harvest fixtures. Three fake calendar events and two fake HubSpot
+// deal changes. The harvest runs on these in demo mode, so a judge sees
+// the full flow with no real OAuth.
+export const DEMO_HARVEST_SOURCES: SourceDigest = {
+  calendarEvents: [
+    {
+      id: "demo-event-1",
+      title: "Sales call with Northwind",
+      start: "2026-11-24T15:00:00Z",
+      attendeeCount: 3,
+    },
+    {
+      id: "demo-event-2",
+      title: "Demo for Harbor Health",
+      start: "2026-11-23T13:00:00Z",
+      attendeeCount: 2,
+    },
+    {
+      id: "demo-event-3",
+      title: "Hiring interview, support lead",
+      start: "2026-11-20T16:00:00Z",
+      attendeeCount: 2,
+    },
+  ],
+  dealChanges: [
+    {
+      id: "demo-deal-1",
+      name: "Northwind",
+      stage: "closedwon",
+      amount: 48000,
+      closeDate: "2026-11-20",
+      stageEnteredAt: "2026-11-20T10:00:00Z",
+      lastModified: "2026-11-20T10:05:00Z",
+    },
+    {
+      id: "demo-deal-2",
+      name: "Harbor Health",
+      stage: "negotiation",
+      amount: 36000,
+      closeDate: null,
+      stageEnteredAt: "2026-11-18T09:00:00Z",
+      lastModified: "2026-11-21T11:00:00Z",
+    },
+  ],
+  noteText: null,
+};
